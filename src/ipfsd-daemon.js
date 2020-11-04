@@ -16,6 +16,8 @@ const daemonLog = {
   err: debug('ipfsd-ctl:daemon:stderr')
 }
 
+const logger = debug('ipfsd-ctl:daemon')
+
 function translateError (err) {
   // get the actual error message to be the err.message
   err.message = `${err.stdout} \n\n ${err.stderr} \n\n ${err.message} \n\n`
@@ -135,6 +137,7 @@ class Daemon {
     if (!this.clean) {
       await fs.remove(this.path)
       this.clean = true
+      logger('subprocess cleanup complete')
     }
     return this
   }
@@ -185,14 +188,17 @@ class Daemon {
           }
         }
         this.subprocess.stdout.on('data', readyHandler)
-        this.subprocess.catch(err => reject(translateError(err)))
+        this.subprocess_stop = this.subprocess.catch(err => reject(translateError(err)))
         this.subprocess.on('exit', () => {
           this.started = false
           this.subprocess.stderr.removeAllListeners()
           this.subprocess.stdout.removeAllListeners()
 
           if (this.disposable) {
+            logger('subprocess has exited, running cleanup for disposable')
             this.cleanup().catch(() => {})
+          } else {
+            logger('subprocess has exited')
           }
         })
       })
@@ -229,6 +235,7 @@ class Daemon {
         // we're done with this node and will remove it's repo when we are done
         // so don't wait for graceful exit, just terminate the process
         this.subprocess.kill('SIGKILL')
+        logger('killed the subprocess')
       } else {
         if (this.opts.forceKill !== false) {
           killTimeout = setTimeout(() => {
@@ -238,13 +245,19 @@ class Daemon {
           }, this.opts.forceKillTimeout)
         }
 
+        logger('cancelling the subprocess')
         this.subprocess.cancel()
       }
 
       // wait for the subprocess to exit and declare ourselves stopped
-      await waitFor(() => !this.started, {
-        timeout
-      })
+      if (this.subprocess_stop) {
+        await this.subprocess_stop
+        this.subprocess_stop = undefined;
+      } else {
+        await waitFor(() => !this.started, {
+          timeout
+        })
+      }
 
       clearTimeout(killTimeout)
 

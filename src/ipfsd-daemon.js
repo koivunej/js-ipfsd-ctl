@@ -135,9 +135,12 @@ class Daemon {
    */
   async cleanup () {
     if (!this.clean) {
+      logger(`begin removing ${this.path}`)
       await fs.remove(this.path)
       this.clean = true
       logger('subprocess cleanup complete')
+    } else {
+      logger('subprocess cleanup noop')
     }
     return this
   }
@@ -195,7 +198,6 @@ class Daemon {
           this.subprocess.stdout.removeAllListeners()
 
           if (this.disposable) {
-            logger('subprocess has exited, running cleanup for disposable')
             this.cleanup().catch(() => {})
           } else {
             logger('subprocess has exited')
@@ -235,7 +237,6 @@ class Daemon {
         // we're done with this node and will remove it's repo when we are done
         // so don't wait for graceful exit, just terminate the process
         this.subprocess.kill('SIGKILL')
-        logger('killed the subprocess')
       } else {
         if (this.opts.forceKill !== false) {
           killTimeout = setTimeout(() => {
@@ -245,7 +246,6 @@ class Daemon {
           }, this.opts.forceKillTimeout)
         }
 
-        logger('cancelling the subprocess')
         this.subprocess.cancel()
       }
 
@@ -254,8 +254,9 @@ class Daemon {
         await this.subprocess_stop
         this.subprocess_stop = undefined;
       } else {
-        await waitFor(() => !this.started, {
-          timeout
+        await waitFor(async () => { logger(`awaiting for stopped: !this.started == ${!this.started}`); return !this.started; }, {
+          timeout,
+          interval: 100
         })
       }
 
@@ -263,8 +264,9 @@ class Daemon {
 
       if (this.disposable) {
         // wait for the cleanup routine to run after the subprocess has exited
-        await waitFor(() => this.clean, {
-          timeout
+        await waitFor(async () => { logger(`awaiting for disposing: this.clean == ${this.clean}`); return this.clean; }, {
+          timeout,
+          interval: 100
         })
       }
     } else {
@@ -272,6 +274,8 @@ class Daemon {
 
       this.started = false
     }
+
+    logger('stop completed')
 
     return this
   }

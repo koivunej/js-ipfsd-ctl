@@ -25,6 +25,8 @@ const defaults = {
   forceKillTimeout: 5000
 }
 
+const logger = require('debug')('ipfsd-ctl:factory');
+
 /**
  * Factory class to spawn ipfsd controllers
  */
@@ -155,8 +157,11 @@ class Factory {
    * @returns {Promise<ControllerDaemon[]>}
    */
   async clean () {
-    await Promise.all(this.controllers.map(n => n.stop()))
-    this.controllers = []
+    let controllers = this.controllers;
+    this.controllers = [];
+    logger(`cleaning up ${controllers.length} controllers`)
+    await Promise.all(controllers.map(n => n.stop()))
+    logger('cleanup ready')
     return this
   }
 }
